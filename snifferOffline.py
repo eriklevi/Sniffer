@@ -1,6 +1,8 @@
 from scapy.all import *
+import md5
 dict = {}
 dict_local = {}
+dict_local_hash = {}
 dict_global = {}
 set_local = set()
 set_global = set()
@@ -40,16 +42,21 @@ class pack:
         else:
             self.globalMac = False 
         self.payload = payload
+        #rimuoviamo header e checksum
         mid = payload[48:len(payload)-8]
+        #leng e la lunghezza delleventuale tag 00
         leng = int(mid[2:4],16)
         if leng == 0:
-            self.IE = mid#.replace("0","")#non e una buona idea, alcune volte sfasa troppo su stringhe simili
+            #inizia gia con 0000
+            self.IE = mid
         else:
+            #rimuoviamo lssid e sostituiamo laparte iniziale con tutti 0
             self.IE = '0000'+mid[4+(leng*2):]
         res = payload_parser(self.IE)
         self.parsed_tags = res[0]
         self.tags_list = res[1]
         self.tags_string = ''.join(self.tags_list)
+
 
     def __str__(self):
         print('mac: '+ self.source_mac)
@@ -185,11 +192,20 @@ def PacketHandler(pkt):
         if pkt.type == 0 and pkt.subtype == 4:
             if pkt.addr1 == 'ff:ff:ff:ff:ff:ff': 
                 if pkt.type == 0 and pkt.subtype == 4:
-                    hex_dump = myhexdump(pkt.payload)
-                    dict[index] = pack(pkt.addr2,hex_dump)
-                    index +=1
+                    try:
+                        extra = pkt.notdecoded
+                        potenza = extra[-2 : -1]
+                        rssi = -(256-ord(potenza))
+                    except:
+                        rssi = -100
+                    if rssi > -100:
+                        hex_dump = myhexdump(pkt.payload)
+                        dict[index] = pack(pkt.addr2,hex_dump)
+                        index +=1
 
-sniff(iface="wlp2s0mon", prn = PacketHandler)
+packets = rdpcap('./aulastudio20p.pcap')
+for packet in packets:
+    PacketHandler(packet)
 
 for key in dict:
     if dict[key].globalMac == True:
@@ -221,25 +237,7 @@ for key in dict2:
     for element in dict2[key]:
         print element
 
-set_local = set(list_local)
-dict2 = {}
-while set_local:
-    first = set_local.pop()
-    pack = dict_local[first]
-    dict2[first] = []
-    for mac in dict_local:
-        if mac != first:
-            risultato = compare_pack_mod1(pack, dict_local[mac])
-            if risultato != 0 and risultato > 0.9:
-                dict2[first].append(similar_mac(mac, risultato))
-                set_local.remove(mac)
 
-print ("stima indirizzi univoci metodo tag per tag togliendo quelli inutili %d" % len(dict2))
-
-for key in dict2:
-    print key
-    for element in dict2[key]:
-        print element
 
 set_local = set(list_local)
 dict2 = {}
@@ -280,3 +278,29 @@ for key in dict2:
     print key
     for element in dict2[key]:
         print element
+
+#prova con hash
+
+def hashmd5(p):
+    leng = str(len(p.IE))
+    tags = p.tags_string
+    if '01' in p.tags_list:
+        tag01 = p.parsed_tags['01']
+    else:
+        tag01 = ''
+    if '32' in p.tags_list:
+        tag32 = p.parsed_tags['32']
+    else:
+        tag32 = ''
+    if '7f' in p.tags_list:
+        tag7f = p.parsed_tags['7f']
+    else:
+        tag7f = ''
+    string = leng+tags+tag01+tag32+tag7f
+    hash_md5 = md5.new(string).hexdigest()
+    return hash_md5
+
+
+for key in dict_local:
+    dict_local_hash[key] = hashmd5(dict_local[key])
+    print key, dict_local_hash[key]
