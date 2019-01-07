@@ -203,7 +203,7 @@ def PacketHandler(pkt):
                         dict[index] = pack(pkt.addr2,hex_dump)
                         index +=1
 
-packets = rdpcap('./aulastudio20p.pcap')
+packets = rdpcap('./exampletra40e50prs.pcap')
 for packet in packets:
     PacketHandler(packet)
 
